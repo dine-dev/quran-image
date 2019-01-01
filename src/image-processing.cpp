@@ -110,28 +110,113 @@ void misc(cv::Mat & src, const cv::Mat & tpl){
     return;
 }
 
-void lines(cv::Mat & src) {
-    //hist = cv2.reduce(rotated,1, cv2.REDUCE_AVG).reshape(-1);
-    cv::Mat src_gray, th, hist;
-    cv::cvtColor(src, src_gray, cv::COLOR_BGR2GRAY);
-    cv::threshold( src_gray, th, 127, 255, cv::THRESH_BINARY_INV|cv::THRESH_OTSU);
-    //cv::imshow("threshold",th);
-    //cv::imshow("threshold",src_gray);
+void lines(cv::Mat & src, int page_number) {
     
-    //std::cout << src.type() << "\n";
-    //std::cout << src_gray.type() << "\n";
-    cv::reduce(th, hist, 1, cv::REDUCE_SUM, CV_64FC1);
+    cv::Mat src_gray_thr;
+    cv::cvtColor(src, src_gray_thr, cv::COLOR_BGR2GRAY);
+    cv::threshold( src_gray_thr, src_gray_thr, 240, 255, cv::THRESH_BINARY);
+//    cv::imshow("src",src);
+//    cv::imshow("threshold",src_gray_thr);
     
-    int hist_thr = 22000;
-    for(int indx = 1; indx < hist.rows; ++indx) {
-        //std::cout << hist.at<double>(indx) << " ";
-        if(hist.at<double>(indx-1) < hist_thr && hist.at<double>(indx) > hist_thr) {
-            cv::line(src, cv::Point(0,indx), cv::Point(src.rows, indx), cv::Scalar(255,0,0), 1);
+    // for src image determine contours then find max area contour and the associated bounding rectangle
+    std::vector<std::vector<cv::Point> > contours;
+    std::vector<cv::Vec4i> hierarchy;
+    std::vector<std::vector<cv::Point> >::const_iterator result;
+    
+    cv::findContours(src_gray_thr, contours, hierarchy, cv::RETR_TREE, cv::CHAIN_APPROX_SIMPLE, cv::Point(0, 0));
+    result = std::max_element(contours.begin(), contours.end(), comp);
+    cv::Rect bounding_rect_src = cv::boundingRect((*result));
+
+    // keep only text part of page (remove page decoration frame)
+    src_gray_thr = src_gray_thr(bounding_rect_src);
+    //cv::imshow("crop",src_gray_thr);
+    
+    const double number_of_line_per_page = 15;
+    const int estimated_line_height = src_gray_thr.rows/number_of_line_per_page;
+    
+    // subdivide in equi-height line 
+    if(0) {
+        double ayah_line_height = src_gray_thr.rows/number_of_line_per_page;
+        int decoration_frame_offset = bounding_rect_src.tl().x;
+        for(int lin = 0; lin < 16; lin++) {
+            cv::line(src,cv::Point(0, decoration_frame_offset + (int)(ayah_line_height*lin)), cv::Point(src.rows, decoration_frame_offset + (int)(ayah_line_height*lin)), cv::Scalar(0, 0, 255), 1);
+        }
+        cv::imshow("crop src",src);
+        return;
+    }
+    
+    // invert black and white
+    cv::bitwise_not ( src_gray_thr, src_gray_thr );
+    
+    std::vector<float> white_pixels_in_row(src_gray_thr.rows, 0);
+    for(int lin=0; lin<src_gray_thr.rows; lin++) {
+        for (int col=0; col<src_gray_thr.cols; col++) {
+            //std::cout << (int)th.at<uchar>(lin,col) << " "; //white
+            white_pixels_in_row[lin] += (int)src_gray_thr.at<uchar>(lin,col) ? 1 : 0;
         }
     }
-    std::cout << "\n";
-    cv::imshow("tot",src);
-    //std::cout << hist << "\n";
+    
+    // print vector
+    int lineOffset = bounding_rect_src.tl().x;
+    //cv::Mat copy;
+    std::vector<int> detected_lines; 
+    for(int thr = 22; thr < 28; thr++) {
+        //src.copyTo(copy);
+        //copy = cv::Mat(src);
+        for(int indx = 1; indx < src_gray_thr.rows; ++indx) {
+            if(white_pixels_in_row.at(indx - 1) < thr && white_pixels_in_row.at(indx) > thr) {
+                //cv::line(copy, cv::Point(0, indx + lineOffset), cv::Point(src.rows, indx + lineOffset), cv::Scalar(0, 0, 255), 1);
+                detected_lines.push_back(indx + lineOffset);
+            }
+        }
+        //cv::imshow("lines thr: " + std::to_string(thr), copy);
+        //copy.release();
+    }
+    
+    // remove duplicate
+    std::sort(detected_lines.begin(), detected_lines.end());
+    detected_lines.erase( unique( detected_lines.begin(), detected_lines.end() ), detected_lines.end() );
+    
+    // remove adjacent lines
+    int adjacent_line_tolerance = 5;
+    for(int indx = 1; indx < detected_lines.size(); /*++indx*/) {
+        if(std::abs( detected_lines[indx - 1] - detected_lines[indx] ) < adjacent_line_tolerance ) {
+            detected_lines.erase(detected_lines.begin() + indx);
+        }
+        else {
+            ++indx;
+        }
+    }
+    
+    // append beginning line if missing (special case four last pages)
+//    if(detected_lines[0] > estimated_line_height) {
+//        detected_lines.insert(detected_lines.begin(),detected_lines[0] - estimated_line_height);
+//    }
+    
+    // remove to small line
+    int max_line_height = 50;
+    for(int indx = 1; indx < detected_lines.size(); /*++indx*/) {
+        if(std::abs( detected_lines[indx - 1] - detected_lines[indx] ) < max_line_height ) {
+            detected_lines.erase(detected_lines.begin() + indx);
+        }
+        else {
+            ++indx;
+        }
+    }
+    
+    // insert missing line
+    
+    for(int indx = 0; indx < detected_lines.size(); ++indx) {
+        cv::line(src, cv::Point(0, detected_lines[indx]), cv::Point(src.rows, detected_lines[indx]), cv::Scalar(0, 0, 255), 1);
+    }
+    //printVector(detected_lines);
+    //cv::imshow("detected lines", src);
+    //cv::waitKey();
+    
+    if(detected_lines.size() < 15) {
+        std::cout << page_number << "\n";
+    }
+
     return;
     
 }

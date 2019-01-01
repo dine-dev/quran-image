@@ -5,6 +5,7 @@ g++ -Wall -std=c++11 -I/Users/bdz/Perso/dev/libraries/opencv/include/opencv4 -o 
 
 #include "image-processing.h"
 #include "data.h"
+#include "utils.h"
 
 /**
  * @function main
@@ -19,10 +20,10 @@ int main(int argc, char** argv)
     const std::string quran_page_url = "http://www.easyquran.com/quran-jpg/images/";
     const std::string image_file_format = ".jpg";
     
-    if(1) {
-        
-        std::vector<int> pages_number(604);
-        std::iota(pages_number.begin(), pages_number.end(), 1);
+    std::vector<int> pages_number(604);
+    std::iota(pages_number.begin(), pages_number.end(), 1);
+    
+    if(0) {
 
         std::vector<std::string> quran_pages_url(604);
         std::for_each(pages_number.cbegin(), pages_number.cend(), [&](const int page_number) {
@@ -71,7 +72,8 @@ int main(int argc, char** argv)
     // miscellaneous
     if(0) {
         // vector contained failed pages
-        std::vector<int> misc_pages = {26, 64, 77, 92, 251, 268};
+        std::vector<int> misc_pages = {/*26, 64, 77, 92, 251, 268, */344};
+        //std::vector<int> misc_pages = {77, 315};
         
         // the template
         cropped = cv::imread("../res/hafs_whiten/tpl_for_misc.jpg", 1);
@@ -85,10 +87,35 @@ int main(int argc, char** argv)
         });
     }
     
+    if(1) {
+        //pages_number = {28};
+        std::for_each(pages_number.cbegin(), pages_number.cend(), [&](const int page_number) {
+            //src = cv::imread("../res/hafs_whiten/" + std::to_string(page_number) + ".jpg", 1);
+            src = cv::imread("../res/warsh/" + std::to_string(page_number) + ".jpg", 1);
+            lines(src, page_number);
+            //cv::imwrite("../res/hafs_line_detection/" + std::to_string(page_number) + ".jpg", src);
+            //cv::imwrite("../res/warsh_line_detection/" + std::to_string(page_number) + ".jpg", src);
+        });
+    }
+    
     if(0) {
-        src = cv::imread("whiten/3.jpg", 1);
-        cv::imshow("src",src);
-        lines(src);
+        //std::string dir_name = "../res/warsh_renamed";//"../res/hafs_renamed";
+        std::string dir_name = "../res/hafs_renamed";
+        std::string base_filename, file_without_extension, file_rename;
+        std::vector<std::string> files = filesInDirectory(dir_name);
+        int file_name_int;
+        std::for_each(files.cbegin(), files.cend(), [&](const std::string file) {
+            // keep file name only with extension
+            base_filename = file.substr(file.find_last_of("/\\") + 1);
+            
+            // remobe extension
+            std::string::size_type const p(base_filename.find_last_of('.'));
+            file_without_extension = base_filename.substr(0, p);
+            file_name_int = std::stoi( file_without_extension );
+            file_rename = dir_name + "/page" + std::to_string(file_name_int/100) + std::to_string((file_name_int%100)/10) + std::to_string(file_name_int%10) + ".jpg";
+            //std::cout << file << " to " << file_rename << "\n";
+            std::rename(file.c_str(), file_rename.c_str());
+        });
     }
 
     return 0;

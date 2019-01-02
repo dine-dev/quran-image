@@ -110,7 +110,7 @@ void misc(cv::Mat & src, const cv::Mat & tpl){
     return;
 }
 
-void lines(cv::Mat & src, int page_number) {
+void lines(cv::Mat & src, std::vector<int> & detected_lines, cv::Rect & frame_bounding_rect) {
     
     cv::Mat src_gray_thr;
     cv::cvtColor(src, src_gray_thr, cv::COLOR_BGR2GRAY);
@@ -125,10 +125,10 @@ void lines(cv::Mat & src, int page_number) {
     
     cv::findContours(src_gray_thr, contours, hierarchy, cv::RETR_TREE, cv::CHAIN_APPROX_SIMPLE, cv::Point(0, 0));
     result = std::max_element(contours.begin(), contours.end(), comp);
-    cv::Rect bounding_rect_src = cv::boundingRect((*result));
+    frame_bounding_rect = cv::boundingRect((*result));
 
     // keep only text part of page (remove page decoration frame)
-    src_gray_thr = src_gray_thr(bounding_rect_src);
+    src_gray_thr = src_gray_thr(frame_bounding_rect);
     //cv::imshow("crop",src_gray_thr);
     
     const double number_of_line_per_page = 15;
@@ -137,7 +137,7 @@ void lines(cv::Mat & src, int page_number) {
     // subdivide in equi-height line 
     if(0) {
         double ayah_line_height = src_gray_thr.rows/number_of_line_per_page;
-        int decoration_frame_offset = bounding_rect_src.tl().x;
+        int decoration_frame_offset = frame_bounding_rect.tl().x;
         for(int lin = 0; lin < 16; lin++) {
             cv::line(src,cv::Point(0, decoration_frame_offset + (int)(ayah_line_height*lin)), cv::Point(src.rows, decoration_frame_offset + (int)(ayah_line_height*lin)), cv::Scalar(0, 0, 255), 1);
         }
@@ -157,9 +157,8 @@ void lines(cv::Mat & src, int page_number) {
     }
     
     // print vector
-    int lineOffset = bounding_rect_src.tl().x;
+    int lineOffset = frame_bounding_rect.tl().x;
     //cv::Mat copy;
-    std::vector<int> detected_lines; 
     for(int thr = 22; thr < 28; thr++) {
         //src.copyTo(copy);
         //copy = cv::Mat(src);
@@ -206,17 +205,36 @@ void lines(cv::Mat & src, int page_number) {
     
     // insert missing line
     
-    for(int indx = 0; indx < detected_lines.size(); ++indx) {
-        cv::line(src, cv::Point(0, detected_lines[indx]), cv::Point(src.rows, detected_lines[indx]), cv::Scalar(0, 0, 255), 1);
-    }
-    //printVector(detected_lines);
-    //cv::imshow("detected lines", src);
-    //cv::waitKey();
+    return;
     
-    if(detected_lines.size() < 15) {
-        std::cout << page_number << "\n";
+}
+
+void words(const cv::Mat & src, std::vector<cv::Rect> & contour_rect) {
+    cv::Mat src_gray_thr;
+    cv::cvtColor(src, src_gray_thr, cv::COLOR_BGR2GRAY);
+    cv::threshold( src_gray_thr, src_gray_thr, 240, 255, cv::THRESH_BINARY);
+    
+    // invert black and white
+    cv::bitwise_not ( src_gray_thr, src_gray_thr );
+
+    int dilation_size = 3;
+    cv::Mat dilation_dst, element;
+    int dilation_type = cv::MORPH_ELLIPSE;//cv::MORPH_RECT; // cv::MORPH_ELLIPSE
+    element = cv::getStructuringElement( dilation_type, cv::Size( 2*dilation_size + 1, 2*dilation_size+1 ), cv::Point( dilation_size, dilation_size ) );    
+    cv::dilate( src_gray_thr, dilation_dst, element );
+    
+    std::vector<std::vector<cv::Point> > contours;
+    std::vector<cv::Vec4i> hierarchy;
+    cv::findContours(dilation_dst, contours, hierarchy, cv::RETR_EXTERNAL, cv::CHAIN_APPROX_SIMPLE, cv::Point(0, 0));
+    
+    // get bounding box of contours
+    for (size_t idx = 0; idx < contours.size(); idx++) {
+        contour_rect.push_back( cv::boundingRect(contours[idx]) );
+        
+        // Draw the contours rectangle
+        //cv::drawContours( src, contours, idx, cv::Scalar(0, 0, 255), 2, 8, hierarchy, 0);
+        cv::rectangle(src, contour_rect[idx].tl(), contour_rect[idx].br(), cv::Scalar(0, 0, 255), 2, 8, 0);
     }
 
     return;
-    
 }
